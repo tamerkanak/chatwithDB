@@ -61,13 +61,12 @@ uploaded_files = st.file_uploader(
 uploaded_filenames = []
 if uploaded_files:
     for uploaded_file in uploaded_files:
-        save_path = os.path.join(config.DATA_DIR, uploaded_file.name)
-        with open(save_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
+        # Dosyayı bellekte tut
+        st.session_state["user_files"][uploaded_file.name] = uploaded_file.getvalue()
         uploaded_filenames.append(uploaded_file.name)
     st.success(f"{len(uploaded_files)} file(s) uploaded: {', '.join(uploaded_filenames)}")
 
-files = [fname for fname in os.listdir(config.DATA_DIR) if fname.endswith(".csv") or fname.endswith(".xlsx")]
+files = list(st.session_state["user_files"].keys())
 
 if not files:
     st.warning("No CSV/XLSX files found for indexing. Please upload files.")
