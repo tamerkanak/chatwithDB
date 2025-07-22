@@ -7,10 +7,10 @@ COLLECTION_NAME = "table_metadata"
 VECTOR_SIZE = 1024
 
 class QdrantUtils:
-    def __init__(self, host="localhost", port=6333, api_key=None):
+    def __init__(self, host=None, https=True, api_key=None):
         self.client = QdrantClient(
             host=host,
-            port=port,
+            https=https,
             api_key=api_key
         )
 
