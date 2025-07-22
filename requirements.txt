@@ -1,0 +1,5 @@
+google-generativeai
+pandasql 
+streamlit
+python-dotenv
+glob2 
