@@ -76,7 +76,7 @@ else:
     st.write(files)
     if st.button("Start Indexing"):
         embedder = Embedder()
-        qdrant = QdrantUtils(host=config.QDRANT_HOST, port=config.QDRANT_PORT, api_key=config.QDRANT_API_KEY)
+        qdrant = QdrantUtils(url=config.QDRANT_URL, api_key=config.QDRANT_API_KEY)
         qdrant.create_collection()
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -108,7 +108,7 @@ if st.button("Query") and query:
     else:
         with st.spinner("Assistant is thinking..."):
             embedder = Embedder()
-            qdrant = QdrantUtils(host=config.QDRANT_HOST, port=config.QDRANT_PORT, api_key=config.QDRANT_API_KEY)
+            qdrant = QdrantUtils(url=config.QDRANT_URL, api_key=config.QDRANT_API_KEY)
             embedding = embedder.embed_query(query)
             hits = qdrant.search(embedding, top_k=1)
             if not hits:
