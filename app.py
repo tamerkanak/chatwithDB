@@ -1,16 +1,22 @@
 import streamlit as st
 import os
 import time
+import io
+import pandas as pd
+import pandasql
 from chatwithdb.metadata_extractor import extract_metadata_from_file
 from chatwithdb.embedder import Embedder
 from chatwithdb.qdrant_client_utils import QdrantUtils
 import config
-from chatwithdb.query_parser import nl_to_sql_with_metadata_gemini, summarize_sql_result_with_gemini, fix_sql_for_sqlite_with_gemini, is_valid_query_llm
-import pandas as pd
-import pandasql
+from chatwithdb.query_parser import (
+    nl_to_sql_with_metadata_gemini,
+    summarize_sql_result_with_gemini,
+    fix_sql_for_sqlite_with_gemini,
+    is_valid_query_llm
+)
 
 # --- Custom Favicon and Page Config ---
-favicon_url = "favicon.png"  # Use your local favicon.jpg or a public URL if needed
+favicon_url = "favicon.png"
 st.set_page_config(
     page_title="ChatWithDB",
     page_icon=favicon_url,
@@ -58,10 +64,13 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
+# Her kullanıcıya özel dosya saklama
+if "user_files" not in st.session_state:
+    st.session_state["user_files"] = {}
+
 uploaded_filenames = []
 if uploaded_files:
     for uploaded_file in uploaded_files:
-        # Dosyayı bellekte tut
         st.session_state["user_files"][uploaded_file.name] = uploaded_file.getvalue()
         uploaded_filenames.append(uploaded_file.name)
     st.success(f"{len(uploaded_files)} file(s) uploaded: {', '.join(uploaded_filenames)}")
@@ -80,8 +89,39 @@ else:
         progress_bar = st.progress(0)
         status_text = st.empty()
         for idx, fname in enumerate(files):
-            fpath = os.path.join(config.DATA_DIR, fname)
-            meta = extract_metadata_from_file(fpath)
+            file_bytes = st.session_state["user_files"][fname]
+            ext = os.path.splitext(fname)[-1].lower()
+            # Dosyayı DataFrame olarak oku
+            if ext == ".csv":
+                df = pd.read_csv(io.BytesIO(file_bytes), nrows=100)
+            else:
+                df = pd.read_excel(io.BytesIO(file_bytes), nrows=100)
+            # Metadata çıkarımı
+            table_name = os.path.splitext(fname)[0]
+            columns = list(df.columns)
+            column_types = []
+            for col in columns:
+                dtype = df[col]
+                if pd.api.types.is_numeric_dtype(dtype):
+                    column_types.append("numeric")
+                elif pd.api.types.is_string_dtype(dtype):
+                    column_types.append("string")
+                elif pd.api.types.is_datetime64_any_dtype(dtype):
+                    column_types.append("datetime")
+                elif pd.api.types.is_bool_dtype(dtype):
+                    column_types.append("boolean")
+                else:
+                    column_types.append("unknown")
+            metadata_text = f"Table: {table_name}\nColumns:\n" + "\n".join([
+                f"- {col}: {typ}" for col, typ in zip(columns, column_types)
+            ])
+            meta = {
+                "table_name": table_name,
+                "columns": columns,
+                "column_types": column_types,
+                "metadata_text": metadata_text,
+                "source_file": fname
+            }
             embedding = embedder.embed_metadata(meta["metadata_text"])
             qdrant.upload_metadata(embedding, {
                 "table_name": meta["table_name"],
@@ -120,41 +160,27 @@ if st.button("Query") and query:
                     st.info(f"With a {percent}% match, the relevant data is likely in the {meta['table_name']} ({meta['source_file']}) table.")
                 else:
                     st.info(f"Best matching table: {meta['table_name']} ({meta['source_file']})")
-                fpath = os.path.join(config.DATA_DIR, meta["source_file"])
-                ext = os.path.splitext(fpath)[-1].lower()
-                if ext == ".csv":
-                    df = pd.read_csv(fpath)
+                # Dosyayı session_state'den oku
+                file_bytes = st.session_state["user_files"].get(meta["source_file"])
+                if not file_bytes:
+                    st.error("File not found in your session. Please re-upload.")
                 else:
-                    df = pd.read_excel(fpath)
-                sql = nl_to_sql_with_metadata_gemini(
-                    query,
-                    meta["table_name"],
-                    meta["columns"],
-                    meta["column_types"]
-                )
-                with st.expander("Show SQL command", expanded=False):
-                    st.code(sql, language="sql")
-                try:
-                    sql_for_pandasql = sql.replace(meta["table_name"], "df")
-                    result = pandasql.sqldf(sql_for_pandasql, locals())
-                    if result.empty:
-                        result_str = "Result: No data found."
-                    elif result.shape == (1, 1):
-                        val = result.iloc[0, 0]
-                        result_str = f"Result: {val}"
+                    ext = os.path.splitext(meta["source_file"])[-1].lower()
+                    if ext == ".csv":
+                        df = pd.read_csv(io.BytesIO(file_bytes))
                     else:
-                        result_str = f"Result:\n{result.to_string(index=False)}\nTotal {len(result)} row(s) returned."
-                    summary = summarize_sql_result_with_gemini(query, result_str)
-                    st.success(summary)
-                    st.dataframe(result)
-                except Exception as e:
-                    st.warning("An error occurred while executing the SQL query.")
+                        df = pd.read_excel(io.BytesIO(file_bytes))
+                    sql = nl_to_sql_with_metadata_gemini(
+                        query,
+                        meta["table_name"],
+                        meta["columns"],
+                        meta["column_types"]
+                    )
+                    with st.expander("Show SQL command", expanded=False):
+                        st.code(sql, language="sql")
                     try:
-                        fixed_sql = fix_sql_for_sqlite_with_gemini(query, sql, str(e), "df")
-                        st.info("Retrying with the fixed SQL...")
-                        with st.expander("Show fixed SQL command", expanded=False):
-                            st.code(fixed_sql, language="sql")
-                        result = pandasql.sqldf(fixed_sql, locals())
+                        sql_for_pandasql = sql.replace(meta["table_name"], "df")
+                        result = pandasql.sqldf(sql_for_pandasql, {"df": df})
                         if result.empty:
                             result_str = "Result: No data found."
                         elif result.shape == (1, 1):
@@ -163,7 +189,25 @@ if st.button("Query") and query:
                         else:
                             result_str = f"Result:\n{result.to_string(index=False)}\nTotal {len(result)} row(s) returned."
                         summary = summarize_sql_result_with_gemini(query, result_str)
-                        st.success(summary)
-                        st.dataframe(result)
-                    except Exception as e2:
-                        st.error("The fixed SQL also failed, please enter a valid query.") 
+                        st.markdown("**Assistant:**")
+                        st.write(summary)
+                    except Exception as e:
+                        st.error(f"An error occurred while executing the SQL query: {e}")
+                        # Try to fix with Gemini
+                        try:
+                            fixed_sql = fix_sql_for_sqlite_with_gemini(query, sql, str(e), "df")
+                            st.info("Retrying with the fixed SQL:")
+                            st.code(fixed_sql, language="sql")
+                            result = pandasql.sqldf(fixed_sql, {"df": df})
+                            if result.empty:
+                                result_str = "Result: No data found."
+                            elif result.shape == (1, 1):
+                                val = result.iloc[0, 0]
+                                result_str = f"Result: {val}"
+                            else:
+                                result_str = f"Result:\n{result.to_string(index=False)}\nTotal {len(result)} row(s) returned."
+                            summary = summarize_sql_result_with_gemini(query, result_str)
+                            st.markdown("**Assistant:**")
+                            st.write(summary)
+                        except Exception as e2:
+                            st.error(f"The fixed SQL also failed: {e2}") 
