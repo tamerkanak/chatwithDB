@@ -1,5 +1,7 @@
-google-generativeai
-pandasql 
 streamlit
+pandas
+pandasql
 python-dotenv
-glob2 
+qdrant-client
+google-generativeai
+sentence-transformers
