@@ -72,7 +72,7 @@ ChatWithDB/
 
 1. **Clone the repository**  
    ```
-   git clone <repo-url>
+   git clone <https://github.com/tamerkanak/chatwithDB>
    cd ChatWithDB
    ```
 
