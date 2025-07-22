@@ -1,13 +1,18 @@
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qdrant_models
 from typing import List, Dict
+import config
 
 COLLECTION_NAME = "table_metadata"
 VECTOR_SIZE = 1024
 
 class QdrantUtils:
-    def __init__(self, host="localhost", port=6333):
-        self.client = QdrantClient(host=host, port=port)
+    def __init__(self, host="localhost", port=6333, api_key=None):
+        self.client = QdrantClient(
+            host=host,
+            port=port,
+            api_key=api_key
+        )
 
     def create_collection(self):
         if COLLECTION_NAME not in [c.name for c in self.client.get_collections().collections]:
