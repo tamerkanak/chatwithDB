@@ -121,6 +121,12 @@ ChatWithDB/
 
 ---
 
+## Example Screenshots
+<img width="1842" height="852" alt="image" src="https://github.com/user-attachments/assets/3981778b-549e-4aa7-9d4d-a4ab13616b25" />
+<img width="1843" height="733" alt="image" src="https://github.com/user-attachments/assets/e52f5c63-2a07-4aef-a715-5abf7bc10949" />
+
+---
+
 ## Credits
 
 Developed by [Tamer Kanak](https://github.com/tamerkanak)  
